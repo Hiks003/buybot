@@ -1,3 +1,4 @@
+from datetime import datetime
 import websocket
 import threading
 import time
@@ -17,8 +18,14 @@ symbol = input("Enter the symbol: ")
 ask = float(input("Enter the ask price: "))
 bid = float(input("Enter the bid price: "))
 quantity = float(input("Enter the quantity: "))
-
+type_search = input("Enter the type search (T/A) Trade/Analysis: ")
 prices = {'ask': ask, 'bid': bid}
+
+last_trade = time.time()
+time_buy = time.time()
+time_sell = time.time()
+time_active = 0.1
+
 BASE_URL = 'wss://wbs-api.mexc.com/ws'
 logging.basicConfig(
     level=logging.DEBUG,
@@ -59,27 +66,37 @@ def place_limit_order(symbol: str, side: str, price: str):
     return response.status_code, response.text
 
 def logic(price: float, quantity_bot: float):
+    global last_trade, time_buy, time_sell
     if not all(isinstance(x, (int, float)) for x in [price, quantity_bot]):
         logger.warning("Invalid price or quantity types")
         return
-    target_price = round(prices['bid'] + 0.000001, 6)
-    if price != target_price:
-        if prices['bid'] < price < prices['ask'] and quantity_bot > 0:
-            if quantity_bot != quantity:
-                logger.info(f"Attempting to place order: price={target_price}")
 
-                print(prices, quantity_bot)
-                status, text = place_limit_order(
-                    symbol=f"{symbol}USDT",
-                    side='BUY',
-                    price=str(target_price)
-                )
-                if status == 200 or status == 201:
-                    logger.info(f"Order placed successfully: {text}")
-                else:
-                    logger.error(f"Failed to place order: Status {status}, Response: {text}")
-                time.sleep(0.1)
-                cancel_order(symbol, json.loads(text)['orderId'])
+    target_price = round(prices['ask'] - 0.0000001, 6)
+    if price != target_price:
+        if prices['bid'] < price < prices['ask']:
+            if quantity_bot > 0:
+                time_buy = time.time()
+                if quantity_bot != quantity:
+                    logger.info(f"Attempting to place order: price={target_price}")
+
+                    print(prices, quantity_bot)
+                    if type_search == 'T':
+                        status, text = place_limit_order(
+                            symbol=f"{symbol}USDT",
+                            side='BUY',
+                            price=str(target_price)
+                        )
+                        if status == 200 or status == 201:
+                            logger.info(f"Order placed successfully: {text}")
+                        else:
+                            logger.error(f"Failed to place order: Status {status}, Response: {text}")
+                        time.sleep(0.1)
+                        cancel_order(symbol, json.loads(text)['orderId'])
+            else:
+                time_sell = time.time()
+                # print("Delta trade:", time_sell - time_buy)
+                # last_trade = time_buy
+
 
 def cancel_order(symbol: str, order_id: str):
     timestamp = int(time.time() * 1000)
@@ -157,6 +174,9 @@ def on_open(ws):
 
     threading.Thread(target=send_ping, daemon=True).start()
 
+
+
+
 def main():
     while True:
         try:
@@ -173,4 +193,7 @@ def main():
         time.sleep(5)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Program interrupted by user.")
